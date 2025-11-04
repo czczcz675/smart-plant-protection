@@ -143,8 +143,93 @@ def generate_simulated_data():
                     })
     return pd.DataFrame(data)
 
-# 生成模拟数据
+# --------------------------
+# 新增：市场数据生成函数
+# --------------------------
+
+@st.cache_data(ttl=3600)
+def generate_market_data():
+    """生成模拟市场数据"""
+    # 生成过去12个月的数据
+    dates = [datetime(2024, 1, 1) + timedelta(days=30*i) for i in range(12)]
+    fruits = list(fruit_diseases.keys())
+    towns = list(lushan_towns.keys())
+    
+    market_data = []
+    
+    for date in dates:
+        for fruit in fruits:
+            # 基础价格（元/公斤）
+            base_price = fruit_economic_value[fruit]
+            
+            # 季节性价格波动
+            seasonal_factor = 1 + 0.4 * np.sin(2 * np.pi * date.month / 12)
+            current_price = base_price * seasonal_factor * random.uniform(0.9, 1.1)
+            
+            # 销量（吨）
+            base_sales = random.randint(50, 200)
+            sales = base_sales * seasonal_factor * random.uniform(0.8, 1.2)
+            
+            # 产量（吨）
+            base_yield = random.randint(100, 500)
+            yield_amount = base_yield * random.uniform(0.7, 1.3)
+            
+            # 市场需求指数
+            demand_index = random.uniform(0.5, 1.5)
+            
+            # 库存水平
+            inventory_level = random.uniform(0.2, 0.8)
+            
+            market_data.append({
+                "日期": date,
+                "月份": date.month,
+                "水果类型": fruit,
+                "价格(元/公斤)": round(current_price, 2),
+                "销量(吨)": round(sales, 2),
+                "产量(吨)": round(yield_amount, 2),
+                "市场需求指数": round(demand_index, 2),
+                "库存水平": round(inventory_level, 2)
+            })
+    
+    return pd.DataFrame(market_data)
+
+@st.cache_data(ttl=3600)
+def generate_regional_market_data():
+    """生成区域市场数据"""
+    fruits = list(fruit_diseases.keys())
+    towns = list(lushan_towns.keys())
+    
+    regional_data = []
+    
+    for town in towns:
+        for fruit in fruits:
+            # 区域产量（吨）
+            yield_amount = random.randint(50, 300)
+            
+            # 区域品质等级（1-5星）
+            quality_grade = random.randint(3, 5)
+            
+            # 区域市场份额
+            market_share = random.uniform(0.05, 0.25)
+            
+            # 运输成本（元/公斤）
+            transport_cost = random.uniform(0.5, 2.0)
+            
+            regional_data.append({
+                "乡镇": town,
+                "水果类型": fruit,
+                "区域产量(吨)": yield_amount,
+                "品质等级": quality_grade,
+                "市场份额": round(market_share, 3),
+                "运输成本(元/公斤)": round(transport_cost, 2)
+            })
+    
+    return pd.DataFrame(regional_data)
+
+# 生成数据
 df = generate_simulated_data()
+market_df = generate_market_data()
+regional_market_df = generate_regional_market_data()
 
 # --------------------------
 # 版本选择侧边栏
@@ -216,6 +301,17 @@ filtered_df = df[
     (df["乡镇"].isin(selected_towns)) &
     (df["水果类型"].isin(selected_fruits)) &
     (df["病虫害类型"].isin(selected_diseases))
+]
+
+# 过滤市场数据
+filtered_market_df = market_df[
+    (market_df["月份"].isin(selected_months)) &
+    (market_df["水果类型"].isin(selected_fruits))
+]
+
+filtered_regional_market_df = regional_market_df[
+    (regional_market_df["乡镇"].isin(selected_towns)) &
+    (regional_market_df["水果类型"].isin(selected_fruits))
 ]
 
 # --------------------------
@@ -319,6 +415,44 @@ def display_kpi_metrics(filtered_df, version_level):
                     delta=f"{len(selected_towns) - affected_towns}个乡镇未受影响"
                 )
 
+def display_market_kpi_metrics(filtered_market_df):
+    """显示市场KPI指标"""
+    if not filtered_market_df.empty:
+        avg_price = filtered_market_df["价格(元/公斤)"].mean()
+        total_sales = filtered_market_df["销量(吨)"].sum()
+        total_yield = filtered_market_df["产量(吨)"].sum()
+        avg_demand = filtered_market_df["市场需求指数"].mean()
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                label="平均市场价格",
+                value=f"¥{avg_price:.2f}/公斤",
+                delta=f"+{(avg_price - fruit_economic_value[selected_fruits[0] if selected_fruits else '桃']):.2f}" if selected_fruits else "N/A"
+            )
+        
+        with col2:
+            st.metric(
+                label="总销量",
+                value=f"{total_sales:,.1f}吨",
+                delta=f"+{(total_sales/len(filtered_market_df)):.1f}吨/月"
+            )
+        
+        with col3:
+            st.metric(
+                label="总产量",
+                value=f"{total_yield:,.1f}吨",
+                delta=f"+{(total_yield/len(filtered_market_df)):.1f}吨/月"
+            )
+        
+        with col4:
+            st.metric(
+                label="市场需求指数",
+                value=f"{avg_demand:.2f}",
+                delta="旺盛" if avg_demand > 1.2 else "平稳" if avg_demand > 0.8 else "疲软"
+            )
+
 # --------------------------
 # 基础版页面
 # --------------------------
@@ -401,7 +535,7 @@ def render_pro_version():
     display_kpi_metrics(filtered_df, "pro")
     
     # 创建选项卡
-    tab1, tab2, tab3 = st.tabs(["🗺️ 智能地图", "📈 趋势分析", "🤖 AI推荐"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🗺️ 智能地图", "📈 趋势分析", "🤖 AI推荐", "📊 市场分析"])
     
     with tab1:
         st.subheader("病虫害分布热力图")
@@ -496,6 +630,37 @@ def render_pro_version():
         else:
             st.warning("请选择筛选条件查看数据")
     
+    with tab4:
+        st.subheader("市场数据分析")
+        if not filtered_market_df.empty:
+            # 市场KPI指标
+            display_market_kpi_metrics(filtered_market_df)
+            
+            # 价格趋势分析
+            st.subheader("📈 价格趋势分析")
+            price_trend = filtered_market_df.groupby(["月份", "水果类型"]).agg({
+                "价格(元/公斤)": "mean"
+            }).reset_index()
+            
+            fig_price = px.line(price_trend, x="月份", y="价格(元/公斤)", color="水果类型",
+                              title="各水果价格月度趋势", markers=True)
+            st.plotly_chart(fig_price, use_container_width=True)
+            
+            # 销量与产量对比
+            st.subheader("📦 销量与产量分析")
+            sales_yield_trend = filtered_market_df.groupby(["月份", "水果类型"]).agg({
+                "销量(吨)": "sum",
+                "产量(吨)": "sum"
+            }).reset_index()
+            
+            fig_sales = px.bar(sales_yield_trend, x="月份", y=["销量(吨)", "产量(吨)"], 
+                             color="水果类型", barmode="group",
+                             title="销量与产量月度对比")
+            st.plotly_chart(fig_sales, use_container_width=True)
+            
+        else:
+            st.warning("请选择筛选条件查看市场数据")
+    
     # 升级到企业版提示
     st.markdown("---")
     st.markdown("""
@@ -572,7 +737,7 @@ def render_enterprise_version():
             )
     
     # 企业版专属功能选项卡
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗺️ 高级地图", "📈 深度分析", "🤖 智能决策", "📊 数据管理", "📋 定制报告"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🗺️ 高级地图", "📈 深度分析", "🤖 智能决策", "📊 数据管理", "📋 定制报告", "💰 市场分析"])
     
     with tab1:
         st.subheader("高级可视化分析")
@@ -783,6 +948,7 @@ data = response.json()
                 include_economic = st.checkbox("包含经济分析", value=True)
                 include_recommendations = st.checkbox("包含防治建议", value=True)
                 include_comparison = st.checkbox("包含区域对比", value=True)
+                include_market = st.checkbox("包含市场分析", value=True)
             
             with col2:
                 st.markdown("**报告格式设置**")
@@ -814,6 +980,11 @@ data = response.json()
                     2. 平均病虫害严重程度: {filtered_df['严重程度'].mean():.1f}/5.0
                     3. 防治投资回报率: {(filtered_df['经济损失(元)'].sum() / filtered_df['防治成本(元)'].sum()):.1f}:1
                     
+                    **市场分析**:
+                    - 平均市场价格: ¥{filtered_market_df['价格(元/公斤)'].mean():.2f}/公斤
+                    - 总销量: {filtered_market_df['销量(吨)'].sum():.1f}吨
+                    - 总产量: {filtered_market_df['产量(吨)'].sum():.1f}吨
+                    
                     **主要建议**:
                     - 优先防治: {selected_diseases[0] if selected_diseases else 'N/A'}
                     - 重点区域: {selected_towns[0] if selected_towns else 'N/A'}
@@ -835,6 +1006,11 @@ data = response.json()
                     1. 预计总经济损失: ¥{filtered_df['经济损失(元)'].sum():,.0f}
                     2. 平均病虫害严重程度: {filtered_df['严重程度'].mean():.1f}/5.0
                     3. 防治投资回报率: {(filtered_df['经济损失(元)'].sum() / filtered_df['防治成本(元)'].sum()):.1f}:1
+                    
+                    市场分析:
+                    - 平均市场价格: ¥{filtered_market_df['价格(元/公斤)'].mean():.2f}/公斤
+                    - 总销量: {filtered_market_df['销量(吨)'].sum():.1f}吨
+                    - 总产量: {filtered_market_df['产量(吨)'].sum():.1f}吨
                     """
                     
                     b64 = base64.b64encode(report_content.encode()).decode()
@@ -846,6 +1022,103 @@ data = response.json()
                     )
         else:
             st.warning("请选择筛选条件查看数据")
+    
+    with tab6:
+        st.subheader("💰 市场数据分析")
+        if not filtered_market_df.empty:
+            # 市场KPI指标
+            display_market_kpi_metrics(filtered_market_df)
+            
+            # 市场分析图表
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # 价格趋势分析
+                st.subheader("📈 价格趋势分析")
+                price_trend = filtered_market_df.groupby(["月份", "水果类型"]).agg({
+                    "价格(元/公斤)": "mean"
+                }).reset_index()
+                
+                fig_price = px.line(price_trend, x="月份", y="价格(元/公斤)", color="水果类型",
+                                  title="各水果价格月度趋势", markers=True)
+                st.plotly_chart(fig_price, use_container_width=True)
+                
+                # 市场需求分析
+                st.subheader("📊 市场需求分析")
+                demand_trend = filtered_market_df.groupby(["月份", "水果类型"]).agg({
+                    "市场需求指数": "mean",
+                    "库存水平": "mean"
+                }).reset_index()
+                
+                fig_demand = px.line(demand_trend, x="月份", y=["市场需求指数", "库存水平"], 
+                                   color="水果类型", title="市场需求与库存趋势")
+                st.plotly_chart(fig_demand, use_container_width=True)
+            
+            with col2:
+                # 销量与产量对比
+                st.subheader("📦 销量与产量分析")
+                sales_yield_trend = filtered_market_df.groupby(["月份", "水果类型"]).agg({
+                    "销量(吨)": "sum",
+                    "产量(吨)": "sum"
+                }).reset_index()
+                
+                fig_sales = px.bar(sales_yield_trend, x="月份", y=["销量(吨)", "产量(吨)"], 
+                                 color="水果类型", barmode="group",
+                                 title="销量与产量月度对比")
+                st.plotly_chart(fig_sales, use_container_width=True)
+                
+                # 区域市场分析
+                st.subheader("🗺️ 区域市场分析")
+                if not filtered_regional_market_df.empty:
+                    fig_regional = px.bar(filtered_regional_market_df, x="乡镇", y="区域产量(吨)", 
+                                        color="水果类型", title="各乡镇水果产量分布")
+                    st.plotly_chart(fig_regional, use_container_width=True)
+            
+            # 市场预测
+            st.subheader("🔮 市场预测分析")
+            col_pred1, col_pred2, col_pred3 = st.columns(3)
+            
+            with col_pred1:
+                st.metric(
+                    "下月价格预测",
+                    f"¥{filtered_market_df['价格(元/公斤)'].mean() * 1.05:.2f}/公斤",
+                    "+5.0%"
+                )
+            
+            with col_pred2:
+                st.metric(
+                    "下月销量预测",
+                    f"{filtered_market_df['销量(吨)'].sum() * 1.08:,.1f}吨",
+                    "+8.0%"
+                )
+            
+            with col_pred3:
+                st.metric(
+                    "下月产量预测",
+                    f"{filtered_market_df['产量(吨)'].sum() * 1.03:,.1f}吨",
+                    "+3.0%"
+                )
+            
+            # 市场建议
+            st.subheader("💡 市场决策建议")
+            
+            # 找出价格最高的水果
+            max_price_fruit = filtered_market_df.groupby("水果类型")["价格(元/公斤)"].mean().idxmax()
+            max_price = filtered_market_df.groupby("水果类型")["价格(元/公斤)"].mean().max()
+            
+            # 找出需求最高的水果
+            max_demand_fruit = filtered_market_df.groupby("水果类型")["市场需求指数"].mean().idxmax()
+            max_demand = filtered_market_df.groupby("水果类型")["市场需求指数"].mean().max()
+            
+            st.info(f"""
+            **市场机会分析**:
+            - **价格优势**: {max_price_fruit} 平均价格最高 (¥{max_price:.2f}/公斤)
+            - **需求旺盛**: {max_demand_fruit} 市场需求最旺盛 (指数: {max_demand:.2f})
+            - **建议**: 优先扩大 {max_price_fruit} 和 {max_demand_fruit} 的种植面积
+            """)
+            
+        else:
+            st.warning("请选择筛选条件查看市场数据")
     
     # 企业版专属服务
     st.markdown("---")
