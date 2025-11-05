@@ -1164,7 +1164,7 @@ def main():
     st.markdown("""
     <div style="text-align: center; color: #666;">
         <p>🌱 智慧植保平台 · 助力农业现代化发展 · 联系电话: 400-123-4567</p>
-        <p>© 2024 智慧植保团队 · 挑战杯大学生创新创业大赛参赛项目</p>
+        <p>© 2025 智慧植保团队  所有权利保留</p>
     </div>
     """, unsafe_allow_html=True)
 
